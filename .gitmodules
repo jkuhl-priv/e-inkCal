@@ -1,0 +1,6 @@
+[submodule "caldav"]
+	path = caldav
+	url = https://github.com/python-caldav/caldav.git
+[submodule "e-Paper"]
+	path = e-Paper
+	url = https://github.com/waveshare/e-Paper.git
