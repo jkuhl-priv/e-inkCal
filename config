@@ -1,6 +1,6 @@
 server:https://www.kuhl-mann.de/nextcloud/remote.php/dav
 user:Justus
 password:Alphabeth1forB2;
-datafile:
+datafile:calendarlib.p
 birthdays:Geburtstage von Kontakten
 calendars:

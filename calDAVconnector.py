@@ -11,40 +11,44 @@ sys.path.insert(0, './caldav')
 import caldav
 from caldav.lib.error import AuthorizationError
 
-#look for commandline args
 
-import getopt
-
-
-inputfile = ''
-outputfile = ''
-try:
-    opts, args = getopt.getopt(sys.argv[1:],"h:i:o",["ifile=","ofile="])
-except getopt.GetoptError:
-    print('test.py -i <inputfile> -o <outputfile>')
-    sys.exit(2)
-for opt, arg in opts:
-    if opt == '-h':
-        print ('test.py -i <inputfile> -o <outputfile>')
-        sys.exit()
-    elif opt in ("-i", "--ifile"):
-        inputfile = arg
-    elif opt in ("-o", "--ofile"):
-        outputfile = arg
-print ('Input file is "', inputfile)
-print ('Output file is "', outputfile)
-
-
+caldav_url = ''
+username = ''
+password = ''
+datafile = ''
+selected_cals = []
+#open config file, load configs
+configfile = open("./config", "r")
+conf = configfile.readlines()
+print(conf)
+for l in conf:
+    l = l.strip()
+    if(l.startswith("server")):
+        caldav_url = l[7:]
+    elif(l.startswith("user")):
+        username = l[5:]
+    elif(l.startswith("password")):
+        password = l[9:]
+    elif(l.startswith("birthdays")):
+        birthdaycal = l[10:]
+    elif(l.startswith("datafile")):
+        datafile = l[9:]
+    elif(l.startswith("calendars")):
+        selected_cals = l[10:].split(";")
+print(selected_cals)
+if(len(caldav_url) == 0):
+    print("Please provide a calDAV link")
+if(len(username) == 0):
+    print("Please provide a username")
 
 #calDAV setup
-caldav_url = 'https://www.kuhl-mann.de/nextcloud/remote.php/dav'
-username = 'Justus'
-password = 'Alphabeth1forB2;'
+
 timezone = [2,0]
 
 timeout = 5
 
-f = open("./calendarlib.p")
+if not (len(datafile) == 0):
+    f = open(datafile)
 
 server_reached = True
 client_established = True
@@ -58,7 +62,6 @@ except (requests.ConnectionError, requests.Timeout) as exception:
 else:
     print("found server")
 
-
 try:
     client = caldav.DAVClient(url=caldav_url, username=username, password=password)
 except (Exception) as ex:
@@ -67,8 +70,19 @@ except (Exception) as ex:
 if(server_reached and client_established):
     print("Successfully connected to server, starting to download calendars...")
     my_principal = client.principal()
-    calendars = my_principal.calendars()
-
+    calendars_fetched = my_principal.calendars()
+    calendars = []
+    if not (len(selected_cals) == 0 or len(selected_cals[0]) == 0):
+        for c in calendars_fetched:
+            if c.name in selected_cals:
+                calendars.append(c)
+    else:
+        calendars = calendars_fetched
+    print("selected calendars:")
+    for c in calendars:
+        print(c.name)
+            
+    
     time_events = []
     day_events = []
     birthdays = []
@@ -105,24 +119,29 @@ if(server_reached and client_established):
                         "SUMMARY":str(event.vobject_instance.vevent.summary.value), 
                         "CALENDAR":c.name
                         })
-    for event in day_events:
-        if event["CALENDAR"] == "Geburtstage von Kontakten":
-            pieces = event["SUMMARY"].split(" ")
-            age = date.today().year - int(pieces[2][2:-1])
-            event["SUMMARY"] = pieces[1]+" "+pieces[0][:-1]+" ("+str(age)+")"
-            birthdays.append(event)
-            day_events.remove(event)
+    if(not (len(birthdaycal) == 0)):
+        for event in day_events:
+            if event["CALENDAR"] == birthdaycal:
+                pieces = event["SUMMARY"].split(" ")
+                age = date.today().year - int(pieces[2][2:-1])
+                event["SUMMARY"] = pieces[1]+" "+pieces[0][:-1]+" ("+str(age)+")"
+                birthdays.append(event)
+                day_events.remove(event)
     print("Download complete")
-    calendarlib = {"DAY_EVENTS":day_events,"TIME_EVENTS":time_events,"BIRTHDAYS":birthdays}
-    #f = open("./calendarlib.p")
-    p.dump( calendarlib, open( "calendarlib.p", "wb" ))
-    f.close()
+    if(len(datafile)!= 0):
+        calendarlib = {"DAY_EVENTS":day_events,"TIME_EVENTS":time_events,"BIRTHDAYS":birthdays}
+        p.dump( calendarlib, open( "calendarlib.p", "wb" ))
+        f.close()
 else:
-    print("Loading caldata from last time...")
-    calendarlib = p.load(open("calendarlib.p","rb"))
-    time_events = calendarlib["TIME_EVENTS"]
-    day_events = calendarlib["DAY_EVENTS"]
-    birthdays = calendarlib["BIRTHDAYS"]
+    if(len(datafile)!= 0):
+        print("Loading caldata from last time...")
+        calendarlib = p.load(open("calendarlib.p","rb"))
+        time_events = calendarlib["TIME_EVENTS"]
+        day_events = calendarlib["DAY_EVENTS"]
+        birthdays = calendarlib["BIRTHDAYS"]
+    else:
+        print("No data available!")
+        exit()
 
 
 #get principal file
