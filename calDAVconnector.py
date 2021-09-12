@@ -135,7 +135,7 @@ if(server_reached and client_established):
 else:
     if(len(datafile)!= 0):
         print("Loading caldata from last time...")
-        calendarlib = p.load(open("calendarlib.p","rb"))
+        calendarlib = p.load(open(datafile,"rb"))
         time_events = calendarlib["TIME_EVENTS"]
         day_events = calendarlib["DAY_EVENTS"]
         birthdays = calendarlib["BIRTHDAYS"]
