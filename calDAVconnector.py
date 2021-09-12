@@ -1,22 +1,21 @@
-from datetime import datetime
-from datetime import date
-from datetime import timedelta
+from datetime import datetime, date, time, timezone, timedelta
 from PIL import Image,ImageDraw,ImageFont
 import pickle as p
 
 import requests
 import sys
-import getopt
 sys.path.insert(0, './caldav')
 import caldav
 from caldav.lib.error import AuthorizationError
-
 
 caldav_url = ''
 username = ''
 password = ''
 datafile = ''
 selected_cals = []
+language="EN"
+weekday_l_key = "FULL"
+draw_date = False
 #open config file, load configs
 configfile = open("./config", "r")
 conf = configfile.readlines()
@@ -35,15 +34,23 @@ for l in conf:
         datafile = l[9:]
     elif(l.startswith("calendars")):
         selected_cals = l[10:].split(";")
-print(selected_cals)
+    elif(l.startswith("language")):
+        language = l[9:]
+    elif(l.startswith("weekday_format")):
+        weekday_l_key = l[15:]
+    elif(l.startswith("draw_date")):
+        k = l[10:]
+        trueish = ["true","TRUE","1","True","T"]
+        draw_date = (k in trueish)
+
+#print(selected_cals)
+#look if server and user are set
 if(len(caldav_url) == 0):
     print("Please provide a calDAV link")
 if(len(username) == 0):
     print("Please provide a username")
 
 #calDAV setup
-
-timezone = [2,0]
 
 timeout = 5
 
@@ -67,7 +74,11 @@ try:
 except (Exception) as ex:
     client_established = False
 
+#check in which time zone we are
+tz = timedelta(minutes = round((datetime.now()-datetime.utcnow()).seconds/60))
+
 if(server_reached and client_established):
+    #if server is available, download new information from server
     print("Successfully connected to server, starting to download calendars...")
     my_principal = client.principal()
     calendars_fetched = my_principal.calendars()
@@ -82,43 +93,47 @@ if(server_reached and client_established):
     for c in calendars:
         print(c.name)
             
-    
+
     time_events = []
     day_events = []
     birthdays = []
+    #go through all calendars to look for events
     for c in calendars:
         current_calendar = my_principal.calendar(name=c.name)
         events_fetched = current_calendar.date_search(
         start=datetime.today()-timedelta(days = datetime.today().weekday()), end=datetime.today()+timedelta(days = 6-datetime.today().weekday()), expand=True)
-
         if len(events_fetched)> 0:
             for event in events_fetched:
                 event_start_str = str(event.vobject_instance.vevent.dtstart)[10:-1]
                 event_end_str = str(event.vobject_instance.vevent.dtend)[8:-1]
+                print(event.vobject_instance.vevent)
                 
                 if(event_start_str.startswith("VALUE")):
+                    #if it is an event over a whole day, sort it into the day events
                     day_events.append({
                         "DATE":date(int(event_start_str.split("}")[1].split("-")[0]),int(event_start_str.split("}")[1].split("-")[1]),int(event_start_str.split("}")[1].split("-")[2])),
                         "SUMMARY":str(event.vobject_instance.vevent.summary.value), 
                         "CALENDAR":c.name
                         })
                 else:
+                    #otherwise it has to be a time event
                     sd = event_start_str.split(" ")[0]
                     st = event_start_str.split(" ")[1]
-                    sh = int(st.split(":")[0])+timezone[0]+int(st.split(":")[2][2:4])
-                    sm = int(st.split(":")[1])+timezone[1]+int(st.split(":")[3])
+                    sh = int(st.split(":")[0])+int(st.split(":")[2][2:4])
+                    sm = int(st.split(":")[1])+int(st.split(":")[3])
                     ss = int(st.split(":")[2][0:1])
                     ed = event_end_str.split(" ")[0]
                     et = event_end_str.split(" ")[1]
-                    eh = int(et.split(":")[0])+timezone[0]+int(st.split(":")[2][2:4])
-                    em = int(et.split(":")[1])+timezone[1]+int(et.split(":")[3])
+                    eh = int(et.split(":")[0])+int(st.split(":")[2][2:4])
+                    em = int(et.split(":")[1])+int(et.split(":")[3])
                     es = int(et.split(":")[2][0:1])
                     time_events.append({
-                        "START":datetime(int(sd.split("-")[0]),int(sd.split("-")[1]),int(sd.split("-")[2]), hour = sh, minute = sm, second = ss),
-                        "END":datetime(int(ed.split("-")[0]),int(ed.split("-")[1]),int(ed.split("-")[2]), hour = eh, minute = em, second = es),
+                        "START":datetime(int(sd.split("-")[0]),int(sd.split("-")[1]),int(sd.split("-")[2]), hour = sh, minute = sm, second = ss)+tz,
+                        "END":datetime(int(ed.split("-")[0]),int(ed.split("-")[1]),int(ed.split("-")[2]), hour = eh, minute = em, second = es)+tz,
                         "SUMMARY":str(event.vobject_instance.vevent.summary.value), 
                         "CALENDAR":c.name
                         })
+    #if the user wants one calendar to be treated as a birthday calendar, these are sorted into an extra library
     if(not (len(birthdaycal) == 0)):
         for event in day_events:
             if event["CALENDAR"] == birthdaycal:
@@ -128,11 +143,13 @@ if(server_reached and client_established):
                 birthdays.append(event)
                 day_events.remove(event)
     print("Download complete")
+    #back up the data received to a local copy so that it can be displayed if needed
     if(len(datafile)!= 0):
         calendarlib = {"DAY_EVENTS":day_events,"TIME_EVENTS":time_events,"BIRTHDAYS":birthdays}
         p.dump( calendarlib, open( "calendarlib.p", "wb" ))
         f.close()
 else:
+    #if the server is not available, instead load information from datafile
     if(len(datafile)!= 0):
         print("Loading caldata from last time...")
         calendarlib = p.load(open(datafile,"rb"))
@@ -142,9 +159,6 @@ else:
     else:
         print("No data available!")
         exit()
-
-
-#get principal file
 
 print(birthdays)
 print(day_events)
@@ -184,9 +198,7 @@ Himage = Image.new('1', (800,480), 255)  # 255: clear the frame
 draw = ImageDraw.Draw(Himage)
 
 #define language, and if abbreviations for weekdays should be used
-language = "EN"
-weekday_l_key = "FULL"
-draw_date = True
+
 #define grid coordinates
 upper_border_grid = 0
 lower_border_grid = 465
@@ -282,22 +294,29 @@ for event in time_events:
     right_border_event = row_start+width_day-6-((events_on_weekday[event["START"].weekday()])>0)*3
     upper_border_event = round(upper_border_grid+weekday_height+5+((lower_border_grid-(upper_border_grid+weekday_height+5))/hours_in_day)*(event["START"].hour-first_hour+(event["START"].minute/60)))
     lower_border_event = round(upper_border_grid+weekday_height+5+((lower_border_grid-(upper_border_grid+weekday_height+5))/hours_in_day)*(event["END"].hour-first_hour+(event["END"].minute/60)))
-    #blank out everything
+    
     if (row_start == row_end): 
         draw.rectangle((left_border_event,upper_border_event,right_border_event,lower_border_event),fill = 255)
+        if(lower_border_event<lower_border_grid):
+            draw.line([(left_border_event,lower_border_event),(right_border_event,lower_border_event)], width = 2, fill = 0)
+        draw.line([(left_border_event,upper_border_event),(left_border_event, min(lower_border_event,lower_border_grid))], width = 4, fill = 0)
+        draw.line([(right_border_event-1,upper_border_event),(right_border_event-1,min(lower_border_event,lower_border_grid))], width = 2, fill = 0)
+        draw.line([(left_border_event,upper_border_event),(right_border_event,upper_border_event)], width = 2, fill = 0)
     else:
-        
+        draw.rectangle((left_border_event,upper_border_event,right_border_event,lower_border_grid),fill = 255)
+        draw.line([(left_border_event,upper_border_event),(left_border_event,lower_border_grid-1)], width = 4, fill = 0)
+        draw.line([(right_border_event-1,upper_border_event),(right_border_event-1,lower_border_grid-2)], width = 2, fill = 0)
+        draw.line([(left_border_event,upper_border_event),(right_border_event,upper_border_event)], width = 2, fill = 0)
         for d in range(event["START"].weekday()+1,event["END"].weekday()):
             draw.rectangle((left_border_event+(d*width_day),upper_border_grid+weekday_height+5,right_border_event+(d*width_day),lower_border_grid),fill = 255)
             draw.line([(left_border_event+(d*width_day),upper_border_grid+weekday_height+5),(left_border_event+(d*width_day),lower_border_grid-1)], width = 4, fill = 0)
-            draw.line([(right_border_event-1+(d*width_day),lower_border_grid-2),(right_border_event-1+(d*width_day),lower_border_grid-2)], width = 2, fill = 0)
-
-    #draw borders
-    draw.line([(left_border_event,upper_border_event),(left_border_event, min(lower_border_event,lower_border_grid))], width = 4, fill = 0)
-    if(lower_border_event<lower_border_grid):
-        draw.line([(left_border_event,lower_border_event),(right_border_event,lower_border_event)], width = 2, fill = 0)
-    draw.line([(left_border_event,upper_border_event),(right_border_event,upper_border_event)], width = 2, fill = 0)
-    draw.line([(right_border_event-1,upper_border_event),(right_border_event-1,min(lower_border_event,lower_border_grid))], width = 2, fill = 0)
+            draw.line([(right_border_event-1+(d*width_day),upper_border_grid+weekday_height+5),(right_border_event-1+(d*width_day),lower_border_grid-2)], width = 2, fill = 0)
+        draw.rectangle((left_border_event+((event["END"].weekday()-event["START"].weekday())*width_day),upper_border_grid+weekday_height+5,right_border_event+((event["END"].weekday()-event["START"].weekday())*width_day),lower_border_event),fill = 255)
+        draw.line([(left_border_event+((event["END"].weekday()-event["START"].weekday())*width_day),upper_border_grid+weekday_height+5),(left_border_event+((event["END"].weekday()-event["START"].weekday())*width_day),lower_border_event)], width = 4, fill = 0)
+        draw.line([(right_border_event-1+((event["END"].weekday()-event["START"].weekday())*width_day),upper_border_grid+weekday_height+5),(right_border_event-1+((event["END"].weekday()-event["START"].weekday())*width_day),lower_border_event)], width = 2, fill = 0)
+        if(lower_border_event<lower_border_grid):
+            draw.line([(left_border_event+((event["END"].weekday()-event["START"].weekday())*width_day),lower_border_event),(right_border_event+((event["END"].weekday()-event["START"].weekday())*width_day),lower_border_event)], width = 2, fill = 0)
+    
     #use abbreviations for some calendars...
     if event["CALENDAR"] in known_calendars:
         cal = known_calendars[event["CALENDAR"]]

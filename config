@@ -4,3 +4,6 @@ password:Alphabeth1forB2;
 datafile:calendarlib.p
 birthdays:Geburtstage von Kontakten
 calendars:
+language:EN
+weekday_format:FULL
+draw_date:True
