@@ -311,9 +311,10 @@ for event in time_events:
             draw.rectangle((left_border_event+(d*width_day),upper_border_grid+weekday_height+5,right_border_event+(d*width_day),lower_border_grid),fill = 255)
             draw.line([(left_border_event+(d*width_day),upper_border_grid+weekday_height+5),(left_border_event+(d*width_day),lower_border_grid-1)], width = 4, fill = 0)
             draw.line([(right_border_event-1+(d*width_day),upper_border_grid+weekday_height+5),(right_border_event-1+(d*width_day),lower_border_grid-2)], width = 2, fill = 0)
-        draw.rectangle((left_border_event+((event["END"].weekday()-event["START"].weekday())*width_day),upper_border_grid+weekday_height+5,right_border_event+((event["END"].weekday()-event["START"].weekday())*width_day),lower_border_event),fill = 255)
-        draw.line([(left_border_event+((event["END"].weekday()-event["START"].weekday())*width_day),upper_border_grid+weekday_height+5),(left_border_event+((event["END"].weekday()-event["START"].weekday())*width_day),lower_border_event)], width = 4, fill = 0)
-        draw.line([(right_border_event-1+((event["END"].weekday()-event["START"].weekday())*width_day),upper_border_grid+weekday_height+5),(right_border_event-1+((event["END"].weekday()-event["START"].weekday())*width_day),lower_border_event)], width = 2, fill = 0)
+        if(event["END"].hour> first_hour):
+            draw.rectangle((left_border_event+((event["END"].weekday()-event["START"].weekday())*width_day),upper_border_grid+weekday_height+5,right_border_event+((event["END"].weekday()-event["START"].weekday())*width_day),lower_border_event),fill = 255)
+            draw.line([(left_border_event+((event["END"].weekday()-event["START"].weekday())*width_day),upper_border_grid+weekday_height+5),(left_border_event+((event["END"].weekday()-event["START"].weekday())*width_day),lower_border_event)], width = 4, fill = 0)
+            draw.line([(right_border_event-1+((event["END"].weekday()-event["START"].weekday())*width_day),upper_border_grid+weekday_height+5),(right_border_event-1+((event["END"].weekday()-event["START"].weekday())*width_day),lower_border_event)], width = 2, fill = 0)
         if(lower_border_event<lower_border_grid):
             draw.line([(left_border_event+((event["END"].weekday()-event["START"].weekday())*width_day),lower_border_event),(right_border_event+((event["END"].weekday()-event["START"].weekday())*width_day),lower_border_event)], width = 2, fill = 0)
     
@@ -324,18 +325,18 @@ for event in time_events:
         cal = event["CALENDAR"]
     wi,hi = eventfont.getsize(event["SUMMARY"])
     #format event title, calendar and time to fit into the rectangle
-    if(lower_border_event-upper_border_event-2 < hi):
+    if(event["START"].day == event["END"].day and lower_border_event-upper_border_event-2 < hi) or lower_border_grid-upper_border_event-2 < hi:
         cropped_ev_str = ('{:2d}'.format(event["START"].hour)+":"+'{:02d}'.format(event["START"].minute)+ " " +event["SUMMARY"])
         while (eventfont.getsize(cropped_ev_str)[0] > right_border_event-left_border_event-4):
             cropped_ev_str = cropped_ev_str[:-1]
         draw.text((left_border_event+6, lower_border_event+4),cropped_ev_str, font = eventfont, fill = 0)
     
-    elif(lower_border_event-upper_border_event-2 < hi*2):
+    elif(event["START"].day == event["END"].day and lower_border_event-upper_border_event-2 < hi*2) or lower_border_grid-upper_border_event-2 < hi*2:
         cropped_ev_str = ('{:2d}'.format(event["START"].hour)+":"+'{:02d}'.format(event["START"].minute)+ " " +event["SUMMARY"])
         while (eventfont.getsize(cropped_ev_str)[0] > right_border_event-left_border_event-4):
             cropped_ev_str = cropped_ev_str[:-1]
         draw.text((left_border_event+6, upper_border_event+4),cropped_ev_str, font = eventfont, fill = 0)   
-      
+    
     else:
         cropped_ev_str = (event["SUMMARY"])
         while (eventfont.getsize(cropped_ev_str)[0] > right_border_event-left_border_event-4):
