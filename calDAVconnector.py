@@ -38,6 +38,7 @@ if (os.path.isfile("./config")):
             datafile = l[9:]
         elif(l.startswith("calendars")):
             selected_cals = l[10:].split(";")
+#here the configs for drawing the calendar start
         elif(l.startswith("language")):
             language = l[9:]
         elif(l.startswith("weekday_format")):
@@ -69,7 +70,7 @@ client_established = True
 
 print("Looking for server...")
 try:
-	request = requests.get(caldav_url, timeout=timeout)
+    request = requests.get(caldav_url, timeout=timeout)
 except (requests.ConnectionError, requests.Timeout) as exception:
     print("didn't find server, showing data from last successful connection")
     server_reached = False
@@ -99,8 +100,7 @@ if(server_reached and client_established):
     print("selected calendars:")
     for c in calendars:
         print(c.name)
-            
-
+    
     time_events = []
     day_events = []
     birthdays = []
@@ -151,6 +151,7 @@ if(server_reached and client_established):
                 birthdays.append(event)
                 day_events.remove(event)
     print("Download complete")
+
     #back up the data received to a local copy so that it can be displayed if needed
     if(len(datafile)!= 0):
         calendarlib = {"DAY_EVENTS":day_events,"TIME_EVENTS":time_events,"BIRTHDAYS":birthdays}
@@ -171,6 +172,7 @@ else:
 print(birthdays)
 print(day_events)
 print(time_events)
+    
 
 #with this information now the week calendar can be painted on a b/w 800x480 bitmap.
 
