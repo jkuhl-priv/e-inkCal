@@ -14,6 +14,7 @@ username = ''
 password = ''
 datafile = ''
 selected_cals = []
+birthdaycal = ''
 language="EN"
 weekday_l_key = "FULL"
 draw_date = False
@@ -113,16 +114,28 @@ if(server_reached and client_established):
             for event in events_fetched:
                 event_start_str = str(event.vobject_instance.vevent.dtstart)[10:-1]
                 event_end_str = str(event.vobject_instance.vevent.dtend)[8:-1]
-                print(event.vobject_instance.vevent)
+                #print(event.vobject_instance.vevent)
                 
                 if(event_start_str.startswith("VALUE")):
                     #if it is an event over a whole day, sort it into the day events
-                    day_events.append({
-                        "START":date(int(event_start_str.split("}")[1].split("-")[0]),int(event_start_str.split("}")[1].split("-")[1]),int(event_start_str.split("}")[1].split("-")[2])),
-                        "END":date(int(event_end_str.split("}")[1].split("-")[0]),int(event_end_str.split("}")[1].split("-")[1]),int(event_end_str.split("}")[1].split("-")[2])),
-                        "SUMMARY":str(event.vobject_instance.vevent.summary.value), 
-                        "CALENDAR":c.name
-                        })
+                    if(not birthdaycal == ''):
+                        if(c.name == birthdaycal):
+                            summary = str(event.vobject_instance.vevent.summary.value)
+                            pieces = summary.split(" ")
+                            age = date.today().year - int(pieces[2][2:-1])
+                            birthdays.append({
+                                "START":date(int(event_start_str.split("}")[1].split("-")[0]),int(event_start_str.split("}")[1].split("-")[1]),int(event_start_str.split("}")[1].split("-")[2])),
+                                "END":date(int(event_end_str.split("}")[1].split("-")[0]),int(event_end_str.split("}")[1].split("-")[1]),int(event_end_str.split("}")[1].split("-")[2])),
+                                "SUMMARY":pieces[1]+" "+pieces[0][:-1]+" ("+str(age)+")", 
+                                "CALENDAR":c.name
+                                })
+                    else:
+                        day_events.append({
+                            "START":date(int(event_start_str.split("}")[1].split("-")[0]),int(event_start_str.split("}")[1].split("-")[1]),int(event_start_str.split("}")[1].split("-")[2])),
+                            "END":date(int(event_end_str.split("}")[1].split("-")[0]),int(event_end_str.split("}")[1].split("-")[1]),int(event_end_str.split("}")[1].split("-")[2])),
+                            "SUMMARY":str(event.vobject_instance.vevent.summary.value), 
+                            "CALENDAR":c.name
+                            })
                 else:
                     #otherwise it has to be a time event
                     sd = event_start_str.split(" ")[0]
@@ -142,14 +155,6 @@ if(server_reached and client_established):
                         "CALENDAR":c.name
                         })
     #if the user wants one calendar to be treated as a birthday calendar, these are sorted into an extra library
-    if(not (len(birthdaycal) == 0)):
-        for event in day_events:
-            if event["CALENDAR"] == birthdaycal:
-                pieces = event["SUMMARY"].split(" ")
-                age = date.today().year - int(pieces[2][2:-1])
-                event["SUMMARY"] = pieces[1]+" "+pieces[0][:-1]+" ("+str(age)+")"
-                birthdays.append(event)
-                day_events.remove(event)
     print("Download complete")
 
     #back up the data received to a local copy so that it can be displayed if needed
@@ -198,14 +203,20 @@ def draw_text_90_into (text: str, into, at):
     # Note that we don't need a mask
     into.paste (img, at)
 
+#only for testing purposes
+has_color = True
+
 #define fonts to be used
 eventfont = ImageFont.truetype("./resource/bf_mnemonika_regular.ttf", 16)
 weekdayfont = ImageFont.truetype("./resource/bf_mnemonika_regular.ttf", 16)
 timefont = ImageFont.truetype("./resource/bf_mnemonika_regular.ttf", 12)
-
+birthdayfont = weekdayfont
 #create image buffer
 Himage = Image.new('1', (800,480), 255)  # 255: clear the frame
 draw = ImageDraw.Draw(Himage)
+if(has_color):
+    HRimage = Image.new('1', (800,480), 255)  # 255: clear the frame
+    draw_r = ImageDraw.Draw(HRimage)
 
 #define language, and if abbreviations for weekdays should be used
 
@@ -223,6 +234,11 @@ width_grid = right_border_grid-left_border_grid
 width_day = round(width_grid/7)
 height_grid = lower_border_grid-upper_border_grid
 weekday_height = weekdayfont.getsize("Monday")[1]
+if(birthdaycal == ''):
+    upper_border_writable = upper_border_grid+weekday_height
+else:
+    birthday_height = birthdayfont.getsize("ABCDEFGHIJKLMNOPQRSTUVWXYZÄÜÖabcdefghijklmnpqrstuvwxyzäüö")[1]
+    upper_border_writable = upper_border_grid+weekday_height+birthday_height+3
 two_hour_space = round(2*(lower_border_grid-(upper_border_grid+weekday_height+2))/hours_in_day)
 last_hour_line = round((hours_in_day-(hours_in_day%2))*two_hour_space/2+upper_border_grid+weekday_height+2)
 #write down weekdays, makes next step easier
@@ -243,30 +259,52 @@ weekdays = {
 
 #draw the weekdays
 monday = datetime.today()-timedelta(days = datetime.today().weekday())
+free_days = [5,6]
 
 for j in range(len(weekdays[language][weekday_l_key])):
     if draw_date:
         if(max([(weekdayfont.getsize(i+", "+str((monday+timedelta(days=j)).day)+"."+str((monday+timedelta(days=j)).month)+".")[0]>width_day-7) for i in weekdays[language]["FULL"]])):
             weekday_l_key = "SHORT"
-        draw.text((left_border_grid+j*width_day+5, upper_border_grid), (weekdays[language][weekday_l_key][j]+", "+str((monday+timedelta(days=j)).day)+"."+str((monday+timedelta(days=j)).month)+"."), font = weekdayfont, fill = 0)
+        w_str = (weekdays[language][weekday_l_key][j]+", "+str((monday+timedelta(days=j)).day)+"."+str((monday+timedelta(days=j)).month)+".")    
     else:
         if(max([(weekdayfont.getsize(i)[0]>width_day-7) for i in weekdays[language]["FULL"]])):
             weekday_l_key = "SHORT"
-        draw.text((left_border_grid+j*width_day+5, upper_border_grid), weekdays[language][weekday_l_key][j], font = weekdayfont, fill = 0)
+        w_str = (weekdays[language][weekday_l_key][j])
+    if has_color and j in free_days:
+        draw_r.text((left_border_grid+j*width_day+5, upper_border_grid),w_str, font = weekdayfont, fill = 0)
+    else:
+        draw.text((left_border_grid+j*width_day+5, upper_border_grid),w_str, font = weekdayfont, fill = 0)
 
+# draw birthdays
+for event in birthdays:
+    cropped_ev_str = (event["SUMMARY"])
+    if (birthdayfont.getsize(cropped_ev_str)[0] > width_day-4):
+        p_list = cropped_ev_str.split(" ")
+        p_list[-2] = p_list[-2][0]+"."
+        cropped_ev_str = ""
+        for l in p_list:
+            cropped_ev_str += l+" "
+        print(cropped_ev_str)
+        while (birthdayfont.getsize(cropped_ev_str)[0] > width_day-4):
+            cropped_ev_str = cropped_ev_str.split("(")[0][:-1]+"("+cropped_ev_str.split("(")[1]
+    d = event["START"].weekday()
+    if has_color:
+        draw_r.text((left_border_grid+d*width_day+5, upper_border_grid+weekday_height+2),cropped_ev_str, font = weekdayfont, fill = 0)
+    else:
+        draw.text((left_border_grid+d*width_day+5, upper_border_grid+weekday_height+2),cropped_ev_str, font = weekdayfont, fill = 0)
 
 #draw a grid
-draw.line([(left_border_grid, upper_border_grid+weekday_height+2),(right_border_grid, upper_border_grid+weekday_height+2)], fill=0, width=2)
+draw.line([(left_border_grid, upper_border_writable+2),(right_border_grid, upper_border_writable+2)], fill=0, width=2)
 for y in range(width_day,width_grid,width_day):
     draw.line([(y+left_border_grid, upper_border_grid),(y+left_border_grid, lower_border_grid)], fill=0, width=2)
 
-for y in range(upper_border_grid+weekday_height+2,lower_border_grid,two_hour_space):
+for y in range(upper_border_writable+2,lower_border_grid,two_hour_space):
     for x in range(left_border_grid, right_border_grid, 6):
         draw.line([(x, y), (x+2, y)], fill = 0, width = 1)
 
 #draw times for orientation
 i = 0
-for y in range(upper_border_grid+weekday_height+4,lower_border_grid,two_hour_space):
+for y in range(upper_border_writable+4,lower_border_grid,two_hour_space):
     draw.text((left_border_grid-timefont.getsize(str(i*2+first_hour))[0], y), str(i*2+first_hour), font = timefont, fill = 0)
     i +=1
 
@@ -282,16 +320,16 @@ for event in day_events:
         else:
             cal = event["CALENDAR"]
         if(np.amax(already_an_event[d,:])== 0):
-            draw.rectangle((row,upper_border_grid+weekday_height+5,row+width_day-6,lower_border_grid-1),fill = 255)
-            draw.line([(row,upper_border_grid+weekday_height+5),(row,lower_border_grid-1)], width = 4, fill = 0)
+            draw.rectangle((row,upper_border_writable+5,row+width_day-6,lower_border_grid-1),fill = 255)
+            draw.line([(row,upper_border_writable+5),(row,lower_border_grid-1)], width = 4, fill = 0)
             draw.line([(row,lower_border_grid-2),(row+width_day-6,lower_border_grid-2)], width = 2, fill = 0)
-            draw.line([(row,upper_border_grid+weekday_height+5),(row+width_day-6,upper_border_grid+weekday_height+5)], width = 2, fill = 0)
-            draw.line([(row+width_day-7,upper_border_grid+weekday_height+5),(row+width_day-7,lower_border_grid-1)], width = 2, fill = 0)
+            draw.line([(row,upper_border_writable+5),(row+width_day-6,upper_border_writable+5)], width = 2, fill = 0)
+            draw.line([(row+width_day-7,upper_border_writable+5),(row+width_day-7,lower_border_grid-1)], width = 2, fill = 0)
             wi, hi = eventfont.getsize (event["SUMMARY"])
             draw_text_90_into("["+cal+"] "+event["SUMMARY"], Himage, (row+4,round(height_grid/2-(weekday_height+5)-wi/2)))
         else:
             wi, hi = eventfont.getsize(event["SUMMARY"])
-            draw.line([(row+6+hi,upper_border_grid+weekday_height+9),(row+6+hi,lower_border_grid-4)], width = 2, fill = 0)
+            draw.line([(row+6+hi,upper_border_writable+9),(row+6+hi,lower_border_grid-4)], width = 2, fill = 0)
             draw_text_90_into("["+cal+"] "+event["SUMMARY"], Himage, (row+10+hi,round(height_grid/2-(weekday_height+5)-wi/2)))    
         already_an_event[d,:] += 1
 
@@ -302,8 +340,8 @@ for event in time_events:
     row_start = width_day*event["START"].weekday()+left_border_grid+4
     row_end = width_day*event["END"].weekday()+left_border_grid+4
     right_border_event = row_start+width_day-6
-    upper_border_event = round(upper_border_grid+weekday_height+5+((lower_border_grid-(upper_border_grid+weekday_height+5))/hours_in_day)*(event["START"].hour-first_hour+(event["START"].minute/60)))
-    lower_border_event = round(upper_border_grid+weekday_height+5+((lower_border_grid-(upper_border_grid+weekday_height+5))/hours_in_day)*(event["END"].hour-first_hour+(event["END"].minute/60)))
+    upper_border_event = round(upper_border_writable+5+((lower_border_grid-(upper_border_writable+5))/hours_in_day)*(event["START"].hour-first_hour+(event["START"].minute/60)))
+    lower_border_event = round(upper_border_writable+5+((lower_border_grid-(upper_border_writable+5))/hours_in_day)*(event["END"].hour-first_hour+(event["END"].minute/60)))
     left_border_event = row_start+((np.amax(already_an_event[event["START"].weekday(),upper_border_event:lower_border_event]))*6)
     already_an_event[event["START"].weekday(),upper_border_event:lower_border_event] +=1
     if (row_start == row_end): 
@@ -319,13 +357,13 @@ for event in time_events:
         draw.line([(right_border_event-1,upper_border_event),(right_border_event-1,lower_border_grid-2)], width = 2, fill = 0)
         draw.line([(left_border_event,upper_border_event),(right_border_event,upper_border_event)], width = 2, fill = 0)
         for d in range(event["START"].weekday()+1,event["END"].weekday()):
-            draw.rectangle((left_border_event+(d*width_day),upper_border_grid+weekday_height+5,right_border_event+(d*width_day),lower_border_grid),fill = 255)
-            draw.line([(left_border_event+(d*width_day),upper_border_grid+weekday_height+5),(left_border_event+(d*width_day),lower_border_grid-1)], width = 4, fill = 0)
-            draw.line([(right_border_event-1+(d*width_day),upper_border_grid+weekday_height+5),(right_border_event-1+(d*width_day),lower_border_grid-2)], width = 2, fill = 0)
+            draw.rectangle((left_border_event+(d*width_day),upper_border_writable+5,right_border_event+(d*width_day),lower_border_grid),fill = 255)
+            draw.line([(left_border_event+(d*width_day),upper_border_writable+5),(left_border_event+(d*width_day),lower_border_grid-1)], width = 4, fill = 0)
+            draw.line([(right_border_event-1+(d*width_day),upper_border_writable+5),(right_border_event-1+(d*width_day),lower_border_grid-2)], width = 2, fill = 0)
         if(event["END"].hour> first_hour):
-            draw.rectangle((left_border_event+((event["END"].weekday()-event["START"].weekday())*width_day),upper_border_grid+weekday_height+5,right_border_event+((event["END"].weekday()-event["START"].weekday())*width_day),lower_border_event),fill = 255)
-            draw.line([(left_border_event+((event["END"].weekday()-event["START"].weekday())*width_day),upper_border_grid+weekday_height+5),(left_border_event+((event["END"].weekday()-event["START"].weekday())*width_day),lower_border_event)], width = 4, fill = 0)
-            draw.line([(right_border_event-1+((event["END"].weekday()-event["START"].weekday())*width_day),upper_border_grid+weekday_height+5),(right_border_event-1+((event["END"].weekday()-event["START"].weekday())*width_day),lower_border_event)], width = 2, fill = 0)
+            draw.rectangle((left_border_event+((event["END"].weekday()-event["START"].weekday())*width_day),upper_border_writable+5,right_border_event+((event["END"].weekday()-event["START"].weekday())*width_day),lower_border_event),fill = 255)
+            draw.line([(left_border_event+((event["END"].weekday()-event["START"].weekday())*width_day),upper_border_writable+5),(left_border_event+((event["END"].weekday()-event["START"].weekday())*width_day),lower_border_event)], width = 4, fill = 0)
+            draw.line([(right_border_event-1+((event["END"].weekday()-event["START"].weekday())*width_day),upper_border_writable+5),(right_border_event-1+((event["END"].weekday()-event["START"].weekday())*width_day),lower_border_event)], width = 2, fill = 0)
         if(lower_border_event<lower_border_grid):
             draw.line([(left_border_event+((event["END"].weekday()-event["START"].weekday())*width_day),lower_border_event),(right_border_event+((event["END"].weekday()-event["START"].weekday())*width_day),lower_border_event)], width = 2, fill = 0)
     
@@ -361,10 +399,14 @@ for event in time_events:
 
 # draw a line for current date and time
 now_row = width_day*datetime.now().weekday()+left_border_grid
-now_time = round(upper_border_grid+weekday_height+5+(((last_hour_line-(upper_border_grid+weekday_height+5))/(hours_in_day-(hours_in_day%2)))*(datetime.now().hour-first_hour+(datetime.now().minute/60))))
-if(now_time < lower_border_grid and now_time > upper_border_grid+weekday_height+2):
-    draw.line([(now_row,now_time),(now_row+width_day-2,now_time)], width = 2, fill = 0)
-    draw.ellipse((now_row, now_time, now_row+10, now_time+4), fill = 0)
+now_time = round(upper_border_writable+5+(((last_hour_line-(upper_border_writable+5))/(hours_in_day-(hours_in_day%2)))*(datetime.now().hour-first_hour+(datetime.now().minute/60))))
+if(now_time < lower_border_grid and now_time > upper_border_writable+2):
+    if has_color:
+        draw_r.line([(now_row,now_time),(now_row+width_day-2,now_time)], width = 2, fill = 0)
+        draw_r.ellipse((now_row, now_time, now_row+10, now_time+4), fill = 0)
+    else:
+        draw.line([(now_row,now_time),(now_row+width_day-2,now_time)], width = 2, fill = 0)
+        draw.ellipse((now_row, now_time, now_row+10, now_time+4), fill = 0)
 
 #draw warnings, if something went wrong with the connection
 if(not server_reached):
@@ -372,4 +414,4 @@ if(not server_reached):
 if(not client_established):
     Himage.paste(Image.open("./resource/unauthorized.png"), (right_border_grid-40,lower_border_grid-40))
 Himage.save("./canvas.bmp")
-
+HRimage.save("./r_canvas.bmp")
