@@ -6,8 +6,10 @@ import numpy as np
 import requests
 import sys, os
 sys.path.insert(0, './caldav')
+sys.path.insert(0, './e-Paper/RaspberryPi_JetsonNano/python/lib')
 import caldav
 from caldav.lib.error import AuthorizationError
+
 
 caldav_url = ''
 username = ''
@@ -51,6 +53,10 @@ if (os.path.isfile("./config")):
         elif(l.startswith("colormode")):
             if l[10:] == "2color":
                 has_color = True
+
+on_e_paper = False
+if(on_e_paper):
+    from waveshare_epd import epd7in5b_V2
 
 #print(selected_cals)
 #look if server and user are set
@@ -211,6 +217,12 @@ eventfont = ImageFont.truetype("./resource/bf_mnemonika_regular.ttf", 16)
 weekdayfont = ImageFont.truetype("./resource/bf_mnemonika_regular.ttf", 16)
 timefont = ImageFont.truetype("./resource/bf_mnemonika_regular.ttf", 12)
 birthdayfont = weekdayfont
+
+if(on_e_paper):
+    #initialise epd for the e-ink display
+    epd = epd7in5b_V2.EPD()
+    epd.init()
+    epd.Clear()
 #create image buffer
 Himage = Image.new('1', (800,480), 255)  # 255: clear the frame
 draw = ImageDraw.Draw(Himage)
@@ -415,3 +427,6 @@ if(not client_established):
     Himage.paste(Image.open("./resource/unauthorized.png"), (right_border_grid-40,lower_border_grid-40))
 Himage.save("./canvas.bmp")
 HRimage.save("./r_canvas.bmp")
+
+if(on_e_paper):
+    epd.display(epd.getbuffer(Himage), epd.getbuffer(HRimage))
