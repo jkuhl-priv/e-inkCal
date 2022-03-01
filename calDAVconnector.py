@@ -16,11 +16,16 @@ from caldav.lib.error import AuthorizationError
 # display information
 
 
-def __main__():
+
+def main():
     config_dict = read_config("../myconfig")
-    cal_connection_established = test_cal_server_connection(server, user, password)
-    if cal_connection_established:
-        birthdays, time_events, day_events = get_calendar_data(server, user, password, selected_cals)
+    print("read config")
+    server_reached = test_cal_server_connection(config_dict["caldav_url"], config_dict["username"], config_dict["password"])
+    if server_reached:
+        client = make_client(config_dict["caldav_url"], config_dict["username"], config_dict["password"])
+        if client:
+            birthdays, time_events, day_events = get_calendar_data(client, config_dict["selected_cals"], config_dict["birthdaycal"])
+            dump_cal_data(config_dict["datafile"], day_events, time_events, birthdays)
     else:
         birthdays, time_events, day_events = load_cal_data(config_dict["datafile"])
     
@@ -28,7 +33,8 @@ def __main__():
     print(day_events)
     print(time_events)
     
-    if not has_color:
+    #with this information now the week calendar can be painted on a b/w 800x480 bitmap.
+    if not config_dict["colormode"]:
         Himage = draw_calendar(config, birthdays, time_events, day_events)
         Himage = draw_warnings(Himage)
         Himage.save("./canvas.bmp")
@@ -43,59 +49,42 @@ def __main__():
     
     return
 
-
-def get_calendar_data(server, user, password, selected_cals):
-
-    return birthdays, time_events, day_events
-
 def read_config(conf_file):
-    caldav_url = ''
-    username = ''
-    password = ''
-    datafile = ''
-    selected_cals = []
-    birthdaycal = ''
-    language="EN"
-    weekday_l_key = "FULL"
-    draw_date = False
-    has_color = False
-    on_e_paper = False
+    conflib = {}
+    # defaults
+    conflib["caldav_url"] = ''
+    conflib["username"] = ''
+    conflib["password"] = ''
+    conflib["datafile"] = ''
+    conflib["selected_cals"] = []
+    conflib["birthdaycal"] = ''
+    conflib["language"]="EN"
+    conflib["weekday_format"] = "FULL"
+    conflib["draw_date"] = False
+    conflib["colormode"] = False
+    conflib["on_e_paper"] = False
     #open config file, load configs
 
     if (os.path.isfile(conf_file)):
-        configfile = open("./config", "r")
+        configfile = open(conf_file, "r")
         conf = configfile.readlines()
-        print(conf)
+        #print(conf)
         for l in conf:
             l = l.strip()
-            if not (l.startswith("#")):
-                # config for calDAV server
-                if(l.startswith("server")):
-                    caldav_url = l[7:]
-                elif(l.startswith("user")):
-                    username = l[5:]
-                elif(l.startswith("password")):
-                    password = l[9:]
-                elif(l.startswith("birthdays")):
-                    birthdaycal = l[10:]
-                elif(l.startswith("datafile")):
-                    datafile = l[9:]
-                elif(l.startswith("calendars")):
-                    selected_cals = l[10:].split(";")
-                 # config for drawing the calendar
-                elif(l.startswith("language")):
-                    language = l[9:]
-                elif(l.startswith("weekday_format")):
-                    weekday_l_key = l[15:]
-                elif(l.startswith("draw_date")):
-                    if l[10:] == "True":
-                        draw_date = True
-                elif(l.startswith("colormode")):
-                    if l[10:] == "2color":
-                        has_color = True
-                elif(l.startswith("on_e_paper")):
-                    if l[11:] == "True":
-                        on_e_paper = True
+            if not l.startswith("#"):
+                key = l.split(" ")[0]
+                if key in ["draw_date","colormode","on_e_paper"]:
+                    #inperpret some values as bool
+                    if l.split(" ")[1] == "True":
+                        value = True
+                elif key in ["selected_cals","birthdaycal"]:
+                    # interpret some values as list
+                    value = l.split(" ")[1].split(";")
+                else:
+                    value = l.split(" ")[1]
+                conflib[key] = value
+
+    return conflib
 
 def test_cal_server_connection(caldav_url, username, password):
     #look if server and user are set
@@ -108,11 +97,7 @@ def test_cal_server_connection(caldav_url, username, password):
 
     timeout = 5
 
-    if not (len(datafile) == 0):
-        f = open(datafile)
-
     server_reached = True
-    client_established = True
 
     print("Looking for server...")
     try:
@@ -122,17 +107,20 @@ def test_cal_server_connection(caldav_url, username, password):
         server_reached = False
     else:
         print("found server")
+    return server_reached
 
+def make_client(caldav_url, username, password):
     try:
         client = caldav.DAVClient(url=caldav_url, username=username, password=password)
     except (Exception) as ex:
-        client_established = False
+        client = None
+        #if server is available, download new information from server
+    return client
 
-#check in which time zone we are
-tz = timedelta(minutes = round((datetime.now()-datetime.utcnow()).seconds/60))
+def get_calendar_data(client, selected_cals, birthdaycal):
+    #check in which time zone we are
+    tz = timedelta(minutes = round((datetime.now()-datetime.utcnow()).seconds/60))
 
-def get_calendar_data():
-    #if server is available, download new information from server
     print("Successfully connected to server, starting to download calendars...")
     my_principal = client.principal()
     calendars_fetched = my_principal.calendars()
@@ -201,14 +189,16 @@ def get_calendar_data():
                         })
     #if the user wants one calendar to be treated as a birthday calendar, these are sorted into an extra library
     print("Download complete")
+    return birthdays, time_events, day_events
 
+def dump_cal_data(datafile, day_events, time_events, birthdays):
     #back up the data received to a local copy so that it can be displayed if needed
     if(len(datafile)!= 0):
         calendarlib = {"DAY_EVENTS":day_events,"TIME_EVENTS":time_events,"BIRTHDAYS":birthdays}
-        p.dump( calendarlib, open( "calendarlib.p", "wb" ))
-        f.close()
+        p.dump( calendarlib, open(datafile, "wb"))
+    return
 
-load_cal_data
+def load_cal_data(datafile):
     #if the server is not available, instead load information from datafile
     if(len(datafile)!= 0):
         print("Loading caldata from last time...")
@@ -219,8 +209,6 @@ load_cal_data
     else:
         print("No data available!")
         exit()
-
-#with this information now the week calendar can be painted on a b/w 800x480 bitmap.
 
 #define function to insert text at a 90 degree angle
 def draw_text_90_into (text: str, into, at):
@@ -311,15 +299,15 @@ def draw_calendar():
     monday = datetime.today()-timedelta(days = datetime.today().weekday())
     free_days = [5,6]
 
-    for j in range(len(weekdays[language][weekday_l_key])):
+    for j in range(len(weekdays[language][weekday_format])):
         if draw_date:
             if(max([(weekdayfont.getsize(i+", "+str((monday+timedelta(days=j)).day)+"."+str((monday+timedelta(days=j)).month)+".")[0]>width_day-7) for i in weekdays[language]["FULL"]])):
-                weekday_l_key = "SHORT"
-            w_str = (weekdays[language][weekday_l_key][j]+", "+str((monday+timedelta(days=j)).day)+"."+str((monday+timedelta(days=j)).month)+".")    
+                weekday_format = "SHORT"
+            w_str = (weekdays[language][weekday_format][j]+", "+str((monday+timedelta(days=j)).day)+"."+str((monday+timedelta(days=j)).month)+".")    
         else:
             if(max([(weekdayfont.getsize(i)[0]>width_day-7) for i in weekdays[language]["FULL"]])):
-                weekday_l_key = "SHORT"
-            w_str = (weekdays[language][weekday_l_key][j])
+                weekday_format = "SHORT"
+            w_str = (weekdays[language][weekday_format][j])
         if has_color and j in free_days:
             draw_r.text((left_border_grid+j*width_day+5, upper_border_grid),w_str, font = weekdayfont, fill = 0)
         else:
@@ -471,3 +459,5 @@ def draw_warnings(Himage):
         Himage.paste(Image.open("./resource/unauthorized.png"), (right_border_grid-40,lower_border_grid-40))
     return Himage
     
+if __name__ == "__main__":
+    main()
