@@ -10,43 +10,69 @@ sys.path.insert(0, './e-Paper/RaspberryPi_JetsonNano/python/lib')
 import caldav
 from caldav.lib.error import AuthorizationError
 
+
 #TODO: refactorisation of the script into
 # read config file
 # get information from server
 # display information
 
+#define fonts to be used
+eventfont = ImageFont.truetype("./resource/bf_mnemonika_regular.ttf", 16)
+weekdayfont = ImageFont.truetype("./resource/bf_mnemonika_regular.ttf", 16)
+timefont = ImageFont.truetype("./resource/bf_mnemonika_regular.ttf", 12)
+birthdayfont = weekdayfont
 
 
 def main():
+    t1 = datetime.now()
     config_dict = read_config("../myconfig")
     print("read config")
+    print(config_dict)
     server_reached = test_cal_server_connection(config_dict["caldav_url"], config_dict["username"], config_dict["password"])
+    t2 = datetime.now()
     if server_reached:
         client = make_client(config_dict["caldav_url"], config_dict["username"], config_dict["password"])
         if client:
+            client_established = True
             birthdays, time_events, day_events = get_calendar_data(client, config_dict["selected_cals"], config_dict["birthdaycal"])
             dump_cal_data(config_dict["datafile"], day_events, time_events, birthdays)
+        else:
+            client_established = False
     else:
         birthdays, time_events, day_events = load_cal_data(config_dict["datafile"])
-    
+    t3 = datetime.now()
     print(birthdays)
     print(day_events)
     print(time_events)
     
-    #with this information now the week calendar can be painted on a b/w 800x480 bitmap.
+    #with this information now the week calendar can be painted on a 800x480 bitmap.
     if not config_dict["colormode"]:
-        Himage = draw_calendar(config, birthdays, time_events, day_events)
-        Himage = draw_warnings(Himage)
+        Himage = draw_calendar(birthdays, time_events, day_events, config_dict["language"],
+        config_dict["weekday_format"], config_dict["draw_date"],
+        config_dict["colormode"])
+        Himage = draw_warnings(Himage, server_reached, client_established)
         Himage.save("./canvas.bmp")
     else:
-        Himage, HRimage = draw_calendar(config, birthdays, time_events, day_events)
-        Himage = draw_warnings(Himage)
+        Himage, HRimage = draw_calendar(birthdays, time_events, day_events, config_dict["language"],
+        config_dict["weekday_format"], config_dict["draw_date"],
+        config_dict["colormode"])
+        Himage = draw_warnings(Himage, server_reached, client_established)
         Himage.save("./canvas.bmp")
         HRimage.save("./r_canvas.bmp")
 
-    if(on_e_paper):
+    if(config_dict["on_e_paper"]):
+        #load epd library
+        from waveshare_epd import epd7in5b_V2
+        #initialise epd for the e-ink display
+        epd = epd7in5b_V2.EPD()
+        epd.init()
+        epd.Clear()
         epd.display(epd.getbuffer(Himage), epd.getbuffer(HRimage))
-    
+    t4 = datetime.now()
+    print(t2-t1)
+    print(t3-t2)
+    print(t4-t3)
+    print(t4-t1)
     return
 
 def read_config(conf_file):
@@ -75,11 +101,15 @@ def read_config(conf_file):
                 key = l.split(" ")[0]
                 if key in ["draw_date","colormode","on_e_paper"]:
                     #inperpret some values as bool
+                    value = False
                     if l.split(" ")[1] == "True":
                         value = True
                 elif key in ["selected_cals","birthdaycal"]:
                     # interpret some values as list
-                    value = l.split(" ")[1].split(";")
+                    value = l.split(" ")[1]
+                    for s in l.split(" ")[2:]:
+                        value += " "+s
+                    value = value.split(";")
                 else:
                     value = l.split(" ")[1]
                 conflib[key] = value
@@ -121,7 +151,7 @@ def get_calendar_data(client, selected_cals, birthdaycal):
     #check in which time zone we are
     tz = timedelta(minutes = round((datetime.now()-datetime.utcnow()).seconds/60))
 
-    print("Successfully connected to server, starting to download calendars...")
+    print("Successfully connected to server, downloading calendars...")
     my_principal = client.principal()
     calendars_fetched = my_principal.calendars()
     calendars = []
@@ -151,8 +181,8 @@ def get_calendar_data(client, selected_cals, birthdaycal):
                 
                 if(event_start_str.startswith("VALUE")):
                     #if it is an event over a whole day, sort it into the day events
-                    if(not birthdaycal == ''):
-                        if(c.name == birthdaycal):
+                    if(not birthdaycal == []):
+                        if(c.name in birthdaycal):
                             summary = str(event.vobject_instance.vevent.summary.value)
                             pieces = summary.split(" ")
                             age = date.today().year - int(pieces[2][2:-1])
@@ -234,21 +264,7 @@ def draw_text_90_into (text: str, into, at):
 
 #only for testing purposes
 
-def draw_calendar():
-    if(on_e_paper):
-        #load epd library
-        from waveshare_epd import epd7in5b_V2
-        #initialise epd for the e-ink display
-        epd = epd7in5b_V2.EPD()
-        epd.init()
-        epd.Clear()
-
-    #define fonts to be used
-    eventfont = ImageFont.truetype("./resource/bf_mnemonika_regular.ttf", 16)
-    weekdayfont = ImageFont.truetype("./resource/bf_mnemonika_regular.ttf", 16)
-    timefont = ImageFont.truetype("./resource/bf_mnemonika_regular.ttf", 12)
-    birthdayfont = weekdayfont
-
+def draw_calendar(birthdays, time_events, day_events, language, weekday_format, draw_date, has_color):
     #create image buffer
     Himage = Image.new('1', (800,480), 255)  # 255: clear the frame
     draw = ImageDraw.Draw(Himage)
@@ -272,7 +288,7 @@ def draw_calendar():
     width_day = round(width_grid/7)
     height_grid = lower_border_grid-upper_border_grid
     weekday_height = weekdayfont.getsize("Monday")[1]
-    if(birthdaycal == ''):
+    if(birthdays == []):
         upper_border_writable = upper_border_grid+weekday_height
     else:
         birthday_height = birthdayfont.getsize("ABCDEFGHIJKLMNOPQRSTUVWXYZÄÜÖabcdefghijklmnpqrstuvwxyzäüö")[1]
@@ -451,7 +467,7 @@ def draw_calendar():
     else:
         return Himage, HRimage
 
-def draw_warnings(Himage):
+def draw_warnings(Himage, server_reached, client_established):
     #draw warnings, if something went wrong with the connection
     if(not server_reached):
         Himage.paste(Image.open("./resource/server_unreachable.png"), (right_border_grid-40,lower_border_grid-40))
