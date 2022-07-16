@@ -1,20 +1,16 @@
 from datetime import datetime, date, time, timezone, timedelta
+from time import sleep
 from PIL import Image,ImageDraw,ImageFont
 import pickle as p
 
 import numpy as np
 import requests
 import sys, os
-sys.path.insert(0, './caldav')
+# sys.path.insert(0, './caldav')
 sys.path.insert(0, './e-Paper/RaspberryPi_JetsonNano/python/lib')
+# this is now imported via pip
 import caldav
 from caldav.lib.error import AuthorizationError
-
-
-#TODO: refactorisation of the script into
-# read config file
-# get information from server
-# display information
 
 #define fonts to be used
 eventfont = ImageFont.truetype("./resource/bf_mnemonika_regular.ttf", 16)
@@ -27,52 +23,49 @@ def main():
     t1 = datetime.now()
     config_dict = read_config("../myconfig")
     print("read config")
-    print(config_dict)
-    server_reached = test_cal_server_connection(config_dict["caldav_url"], config_dict["username"], config_dict["password"])
-    t2 = datetime.now()
-    if server_reached:
-        client = make_client(config_dict["caldav_url"], config_dict["username"], config_dict["password"])
-        if client:
-            client_established = True
-            birthdays, time_events, day_events = get_calendar_data(client, config_dict["selected_cals"], config_dict["birthdaycal"])
-            dump_cal_data(config_dict["datafile"], day_events, time_events, birthdays)
+    while(True):
+        t2 = datetime.now()
+        server_reached = test_cal_server_connection(config_dict["caldav_url"], config_dict["username"], config_dict["password"])
+        if server_reached:
+            client = make_client(config_dict["caldav_url"], config_dict["username"], config_dict["password"])
+            if client:
+                client_established = True
+                birthdays, time_events, day_events = get_calendar_data(client, config_dict["selected_cals"], config_dict["birthdaycal"])
+                dump_cal_data(config_dict["datafile"], day_events, time_events, birthdays)
+            else:
+                client_established = False
         else:
-            client_established = False
-    else:
-        birthdays, time_events, day_events = load_cal_data(config_dict["datafile"])
-    t3 = datetime.now()
-    print(birthdays)
-    print(day_events)
-    print(time_events)
-    
-    #with this information now the week calendar can be painted on a 800x480 bitmap.
-    if not config_dict["colormode"]:
-        Himage = draw_calendar(birthdays, time_events, day_events, config_dict["language"],
-        config_dict["weekday_format"], config_dict["draw_date"],
-        config_dict["colormode"])
-        Himage = draw_warnings(Himage, server_reached, client_established)
-        Himage.save("./canvas.bmp")
-    else:
-        Himage, HRimage = draw_calendar(birthdays, time_events, day_events, config_dict["language"],
-        config_dict["weekday_format"], config_dict["draw_date"],
-        config_dict["colormode"])
-        Himage = draw_warnings(Himage, server_reached, client_established)
-        Himage.save("./canvas.bmp")
-        HRimage.save("./r_canvas.bmp")
+            birthdays, time_events, day_events = load_cal_data(config_dict["datafile"])
+        #with this information now the week calendar can be painted on a 800x480 bitmap.
+        # if new data changed or draw_now is on, display new data
+        if not config_dict["colormode"]:
+            Himage = draw_calendar(birthdays, time_events, day_events, config_dict["language"],
+            config_dict["weekday_format"], config_dict["draw_date"],
+            config_dict["colormode"], config_dict["draw_now"])
+            Himage = draw_warnings(Himage, server_reached, client_established)
+            Himage.save("./canvas.bmp")
+        else:
+            Himage, HRimage = draw_calendar(birthdays, time_events, day_events, config_dict["language"],
+            config_dict["weekday_format"], config_dict["draw_date"],
+            config_dict["colormode"], config_dict["draw_now"])
+            Himage = draw_warnings(Himage, server_reached, client_established)
+            Himage.save("./canvas.bmp")
+            HRimage.save("./r_canvas.bmp")
 
-    if(config_dict["on_e_paper"]):
-        #load epd library
-        from waveshare_epd import epd7in5b_V2
-        #initialise epd for the e-ink display
-        epd = epd7in5b_V2.EPD()
-        epd.init()
-        epd.Clear()
-        epd.display(epd.getbuffer(Himage), epd.getbuffer(HRimage))
-    t4 = datetime.now()
-    print(t2-t1)
-    print(t3-t2)
-    print(t4-t3)
-    print(t4-t1)
+        if(config_dict["on_e_paper"]):
+            #load epd library
+            from waveshare_epd import epd7in5b_V2
+            #initialise epd for the e-ink display
+            epd = epd7in5b_V2.EPD()
+            epd.init()
+            epd.Clear()
+            epd.display(epd.getbuffer(Himage), epd.getbuffer(HRimage))
+        t4 = datetime.now()
+        delta = t4-t2
+        print('needed', delta)
+        sleeptime = float(config_dict["update_time"])-delta.total_seconds() if float(config_dict["update_time"])-delta.total_seconds()>0 else 0
+        print("sleeping for", sleeptime, "s" )
+        sleep(sleeptime)
     return
 
 def read_config(conf_file):
@@ -89,6 +82,8 @@ def read_config(conf_file):
     conflib["draw_date"] = False
     conflib["colormode"] = False
     conflib["on_e_paper"] = False
+    conflib["draw_now"] = False
+    conflib["update_time"] = 600
     #open config file, load configs
 
     if (os.path.isfile(conf_file)):
@@ -99,7 +94,7 @@ def read_config(conf_file):
             l = l.strip()
             if not l.startswith("#"):
                 key = l.split(" ")[0]
-                if key in ["draw_date","colormode","on_e_paper"]:
+                if key in ["draw_date", "colormode", "on_e_paper", "draw_now"]:
                     #inperpret some values as bool
                     value = False
                     if l.split(" ")[1] == "True":
@@ -113,7 +108,7 @@ def read_config(conf_file):
                 else:
                     value = l.split(" ")[1]
                 conflib[key] = value
-
+    # else mv config ot upper directory
     return conflib
 
 def test_cal_server_connection(caldav_url, username, password):
@@ -264,7 +259,7 @@ def draw_text_90_into (text: str, into, at):
 
 #only for testing purposes
 
-def draw_calendar(birthdays, time_events, day_events, language, weekday_format, draw_date, has_color):
+def draw_calendar(birthdays, time_events, day_events, language, weekday_format, draw_date, has_color, draw_now):
     #create image buffer
     Himage = Image.new('1', (800,480), 255)  # 255: clear the frame
     draw = ImageDraw.Draw(Himage)
@@ -452,16 +447,17 @@ def draw_calendar(birthdays, time_events, day_events, language, weekday_format, 
             draw.text((left_border_event+6, upper_border_event+4),cropped_ev_str, font = eventfont, fill = 0)
 
     # draw a line for current date and time
-    now_row = width_day*datetime.now().weekday()+left_border_grid
-    now_time = round(upper_border_writable+5+(((last_hour_line-(upper_border_writable+5))/(hours_in_day-(hours_in_day%2)))*(datetime.now().hour-first_hour+(datetime.now().minute/60))))
-    if(now_time < lower_border_grid and now_time > upper_border_writable+2):
-        if has_color:
-            draw_r.line([(now_row,now_time),(now_row+width_day-2,now_time)], width = 2, fill = 0)
-            draw_r.ellipse((now_row, now_time, now_row+10, now_time+4), fill = 0)
-        else:
-            draw.line([(now_row,now_time),(now_row+width_day-2,now_time)], width = 2, fill = 0)
-            draw.ellipse((now_row, now_time, now_row+10, now_time+4), fill = 0)
-    
+    if draw_now:
+        now_row = width_day*datetime.now().weekday()+left_border_grid
+        now_time = round(upper_border_writable+5+(((last_hour_line-(upper_border_writable+5))/(hours_in_day-(hours_in_day%2)))*(datetime.now().hour-first_hour+(datetime.now().minute/60))))
+        if(now_time < lower_border_grid and now_time > upper_border_writable+2):
+            if has_color:
+                draw_r.line([(now_row,now_time),(now_row+width_day-2,now_time)], width = 2, fill = 0)
+                draw_r.ellipse((now_row, now_time, now_row+10, now_time+4), fill = 0)
+            else:
+                draw.line([(now_row,now_time),(now_row+width_day-2,now_time)], width = 2, fill = 0)
+                draw.ellipse((now_row, now_time, now_row+10, now_time+4), fill = 0)
+        
     if not has_color:
         return Himage
     else:

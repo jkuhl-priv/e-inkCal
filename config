@@ -1,21 +1,25 @@
 # template for a config file
 # calDAV url
-server
+caldav_url
 # username
-user
+username
 # password
-password
+password 
 # calendar(s) that are treated as birthday calendars
 # birthdays 
 # savefile on device in case of connection loss
 datafile ../mydata.p
 # if you don't want to load all calendars, select a few with this command, seperate the calendar names by ";"
-calendars
+# calendars
 # select the weekday format, valid choices are "FULL" ""
-weekday_format 
+weekday_format FULL
 # select if the date is drawn
 draw_date True
 # if you have a e-ink display that can show color, you can use this command to choose if color is used
 colormode False
 # set this ony to true in production, for testing the images produced are just put in the script folder
 on_e_paper False
+# draw a line at current time and date
+draw_now False
+# update_time in seconds
+update_time 600
