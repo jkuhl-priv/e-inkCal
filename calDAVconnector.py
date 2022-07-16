@@ -40,13 +40,13 @@ def main():
                 client_established = False
         else:
             birthdays, time_events, day_events = load_cal_data(config_dict["datafile"])
-        print(birthdays)
-        print(time_events)
-        print(day_events)
+        # print(birthdays)
+        # print(time_events)
+        # print(day_events)
         #with this information now the week calendar can be painted on a 800x480 bitmap.
         # if new data changed or draw_now is on, display new data
-        if (config_dict["draw_now"] or not cal_data_issame(config_dict["datafile"], config_dict["datafile_old"])):
-            print("I have to draw the calendar newly")
+        if (config_dict["draw_now"] or not client_established or not cal_data_issame(config_dict["datafile"], config_dict["datafile_old"])):
+            print("need to redraw the calendar...")
             if not config_dict["colormode"]:
                 Himage = draw_calendar(birthdays, time_events, day_events, config_dict["language"],
                 config_dict["weekday_format"], config_dict["draw_date"],
@@ -68,7 +68,10 @@ def main():
                 epd = epd7in5b_V2.EPD()
                 epd.init()
                 epd.Clear()
-                epd.display(epd.getbuffer(Himage), epd.getbuffer(HRimage))
+                if config_dict["colormode"]:
+                    epd.display(epd.getbuffer(Himage), epd.getbuffer(HRimage))
+                else:
+                    epd.display(epd.getbuffer(Himage))
         else:
             print("no need to redo anything...")
         t4 = datetime.now()
@@ -176,6 +179,7 @@ def get_calendar_data(client, selected_cals, birthdaycal):
     birthdays = []
     #go through all calendars to look for events
     for c in calendars:
+        # print(c)
         current_calendar = my_principal.calendar(name=c.name)
         events_fetched = current_calendar.date_search(
         start=datetime.today()-timedelta(days = datetime.today().weekday()), end=datetime.today()+timedelta(days = 6-datetime.today().weekday()), expand=True)
@@ -183,21 +187,20 @@ def get_calendar_data(client, selected_cals, birthdaycal):
             for event in events_fetched:
                 event_start_str = str(event.vobject_instance.vevent.dtstart)[10:-1]
                 event_end_str = str(event.vobject_instance.vevent.dtend)[8:-1]
-                #print(event.vobject_instance.vevent)
+                #print(event_start_str)
                 
                 if(event_start_str.startswith("VALUE")):
                     #if it is an event over a whole day, sort it into the day events
-                    if(not birthdaycal == []):
-                        if(c.name in birthdaycal):
-                            summary = str(event.vobject_instance.vevent.summary.value)
-                            pieces = summary.split(" ")
-                            age = date.today().year - int(pieces[2][2:-1])
-                            birthdays.append({
-                                "START":date(int(event_start_str.split("}")[1].split("-")[0]),int(event_start_str.split("}")[1].split("-")[1]),int(event_start_str.split("}")[1].split("-")[2])),
-                                "END":date(int(event_end_str.split("}")[1].split("-")[0]),int(event_end_str.split("}")[1].split("-")[1]),int(event_end_str.split("}")[1].split("-")[2])),
-                                "SUMMARY":pieces[1]+" "+pieces[0][:-1]+" ("+str(age)+")", 
-                                "CALENDAR":c.name
-                                })
+                    if(c.name in birthdaycal):
+                        summary = str(event.vobject_instance.vevent.summary.value)
+                        pieces = summary.split(" ")
+                        age = date.today().year - int(pieces[2][2:-1])
+                        birthdays.append({
+                            "START":date(int(event_start_str.split("}")[1].split("-")[0]),int(event_start_str.split("}")[1].split("-")[1]),int(event_start_str.split("}")[1].split("-")[2])),
+                            "END":date(int(event_end_str.split("}")[1].split("-")[0]),int(event_end_str.split("}")[1].split("-")[1]),int(event_end_str.split("}")[1].split("-")[2])),
+                            "SUMMARY":pieces[1]+" "+pieces[0][:-1]+" ("+str(age)+")", 
+                            "CALENDAR":c.name
+                            })
                     else:
                         day_events.append({
                             "START":date(int(event_start_str.split("}")[1].split("-")[0]),int(event_start_str.split("}")[1].split("-")[1]),int(event_start_str.split("}")[1].split("-")[2])),
