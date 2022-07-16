@@ -1,7 +1,9 @@
+from calendar import calendar
 from datetime import datetime, date, time, timezone, timedelta
 from time import sleep
 from PIL import Image,ImageDraw,ImageFont
 import pickle as p
+import shutil
 
 import numpy as np
 import requests
@@ -23,8 +25,10 @@ def main():
     t1 = datetime.now()
     config_dict = read_config("../myconfig")
     print("read config")
+    
     while(True):
         t2 = datetime.now()
+        shutil.copyfile(config_dict["datafile"],config_dict["datafile_old"])
         server_reached = test_cal_server_connection(config_dict["caldav_url"], config_dict["username"], config_dict["password"])
         if server_reached:
             client = make_client(config_dict["caldav_url"], config_dict["username"], config_dict["password"])
@@ -36,30 +40,37 @@ def main():
                 client_established = False
         else:
             birthdays, time_events, day_events = load_cal_data(config_dict["datafile"])
+        print(birthdays)
+        print(time_events)
+        print(day_events)
         #with this information now the week calendar can be painted on a 800x480 bitmap.
         # if new data changed or draw_now is on, display new data
-        if not config_dict["colormode"]:
-            Himage = draw_calendar(birthdays, time_events, day_events, config_dict["language"],
-            config_dict["weekday_format"], config_dict["draw_date"],
-            config_dict["colormode"], config_dict["draw_now"])
-            Himage = draw_warnings(Himage, server_reached, client_established)
-            Himage.save("./canvas.bmp")
-        else:
-            Himage, HRimage = draw_calendar(birthdays, time_events, day_events, config_dict["language"],
-            config_dict["weekday_format"], config_dict["draw_date"],
-            config_dict["colormode"], config_dict["draw_now"])
-            Himage = draw_warnings(Himage, server_reached, client_established)
-            Himage.save("./canvas.bmp")
-            HRimage.save("./r_canvas.bmp")
+        if (config_dict["draw_now"] or not cal_data_issame(config_dict["datafile"], config_dict["datafile_old"])):
+            print("I have to draw the calendar newly")
+            if not config_dict["colormode"]:
+                Himage = draw_calendar(birthdays, time_events, day_events, config_dict["language"],
+                config_dict["weekday_format"], config_dict["draw_date"],
+                config_dict["colormode"], config_dict["draw_now"])
+                Himage = draw_warnings(Himage, server_reached, client_established)
+                Himage.save("./canvas.bmp")
+            else:
+                Himage, HRimage = draw_calendar(birthdays, time_events, day_events, config_dict["language"],
+                config_dict["weekday_format"], config_dict["draw_date"],
+                config_dict["colormode"], config_dict["draw_now"])
+                Himage = draw_warnings(Himage, server_reached, client_established)
+                Himage.save("./canvas.bmp")
+                HRimage.save("./r_canvas.bmp")
 
-        if(config_dict["on_e_paper"]):
-            #load epd library
-            from waveshare_epd import epd7in5b_V2
-            #initialise epd for the e-ink display
-            epd = epd7in5b_V2.EPD()
-            epd.init()
-            epd.Clear()
-            epd.display(epd.getbuffer(Himage), epd.getbuffer(HRimage))
+            if(config_dict["on_e_paper"]):
+                #load epd library
+                from waveshare_epd import epd7in5b_V2
+                #initialise epd for the e-ink display
+                epd = epd7in5b_V2.EPD()
+                epd.init()
+                epd.Clear()
+                epd.display(epd.getbuffer(Himage), epd.getbuffer(HRimage))
+        else:
+            print("no need to redo anything...")
         t4 = datetime.now()
         delta = t4-t2
         print('needed', delta)
@@ -226,14 +237,35 @@ def dump_cal_data(datafile, day_events, time_events, birthdays):
 def load_cal_data(datafile):
     #if the server is not available, instead load information from datafile
     if(len(datafile)!= 0):
-        print("Loading caldata from last time...")
+        print("Loading caldata...")
         calendarlib = p.load(open(datafile,"rb"))
         time_events = calendarlib["TIME_EVENTS"]
         day_events = calendarlib["DAY_EVENTS"]
         birthdays = calendarlib["BIRTHDAYS"]
+        return birthdays, time_events, day_events
     else:
         print("No data available!")
         exit()
+
+def cal_data_issame(file_old, file_new):
+    birthdays_old, time_events_old, day_events_old = load_cal_data(file_old)
+    birthdays_new, time_events_new, day_events_new = load_cal_data(file_new)
+    events_old = [birthdays_old, time_events_old, day_events_old]
+    events_new = [birthdays_new, time_events_new, day_events_new]
+    # compare birthdays
+    for i in range(3):
+        if len(events_new[i]) == len(events_old[i]):
+            for event in events_new[i]:
+                found_pair = False
+                for event2 in events_old[i]:
+                    if event["SUMMARY"] == event2["SUMMARY"] and event["START"] == event2["START"] and event["END"] == event2["END"] and event["CALENDAR"] == event2["CALENDAR"]:
+                        #print("found a pair")
+                        found_pair = True
+                if not found_pair:
+                    return False
+        else:
+            return False
+    return True
 
 #define function to insert text at a 90 degree angle
 def draw_text_90_into (text: str, into, at):
