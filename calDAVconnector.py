@@ -42,7 +42,7 @@ def main():
             birthdays, time_events, day_events = load_cal_data(config_dict["datafile"])
         # print(birthdays)
         # print(time_events)
-        # print(day_events)
+        print(day_events)
         #with this information now the week calendar can be painted on a 800x480 bitmap.
         # if new data changed or draw_now is on, display new data
         if (config_dict["draw_now"] or not client_established or not cal_data_issame(config_dict["datafile"], config_dict["datafile_old"])):
@@ -397,7 +397,8 @@ def draw_calendar(birthdays, time_events, day_events, language, weekday_format, 
     known_calendars = {"DLRG Kalendar" : "DLRG", "Uni Kalendar" : "UNI", "Persönlich" : "PER"}
 
     for event in day_events:
-        for d in range(event["START"].weekday(),event["END"].weekday()):
+        for d in range(event["START"].weekday(),(event["END"].weekday()) if(event["END"].weekday()>event["START"].weekday()) else 7):
+            print(d)
             row = width_day*d+left_border_grid+4
             if event["CALENDAR"] in known_calendars:
                 cal = known_calendars[event["CALENDAR"]]
