@@ -4,3 +4,6 @@
 [submodule "e-Paper"]
 	path = e-Paper
 	url = https://github.com/waveshare/e-Paper.git
+[submodule "weather-icons"]
+	path = weather-icons
+	url = https://github.com/erikflowers/weather-icons.git

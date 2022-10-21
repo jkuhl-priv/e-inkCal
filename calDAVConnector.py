@@ -40,40 +40,37 @@ def main():
                 client_established = False
         else:
             birthdays, time_events, day_events = load_cal_data(config_dict["datafile"])
-        # print(birthdays)
-        # print(time_events)
-        print(day_events)
         #with this information now the week calendar can be painted on a 800x480 bitmap.
         # if new data changed or draw_now is on, display new data
-        if (config_dict["draw_now"] or not client_established or not cal_data_issame(config_dict["datafile"], config_dict["datafile_old"]) or not os.path.exists("canvas.bmp")):
-            print("need to redraw the calendar...")
-            if not config_dict["colormode"]:
-                Himage = draw_calendar(birthdays, time_events, day_events, config_dict["language"],
-                config_dict["weekday_format"], config_dict["draw_date"],
-                config_dict["colormode"], config_dict["draw_now"])
-                Himage = draw_warnings(Himage, server_reached, client_established)
-                Himage.save("./canvas.bmp")
-            else:
-                Himage, HRimage = draw_calendar(birthdays, time_events, day_events, config_dict["language"],
-                config_dict["weekday_format"], config_dict["draw_date"],
-                config_dict["colormode"], config_dict["draw_now"])
-                Himage = draw_warnings(Himage, server_reached, client_established)
-                Himage.save("./canvas.bmp")
-                HRimage.save("./r_canvas.bmp")
-
-            if(config_dict["on_e_paper"]):
-                #load epd library
-                from waveshare_epd import epd7in5b_V2
-                #initialise epd for the e-ink display
-                epd = epd7in5b_V2.EPD()
-                epd.init()
-                epd.Clear()
-                if config_dict["colormode"]:
-                    epd.display(epd.getbuffer(Himage), epd.getbuffer(HRimage))
-                else:
-                    epd.display(epd.getbuffer(Himage))
+        #if (config_dict["draw_now"] or not client_established or not cal_data_issame(config_dict["datafile"], config_dict["datafile_old"]) or not os.path.exists("canvas.bmp")):
+        print("need to redraw the calendar...")
+        if not config_dict["colormode"]:
+            Himage = draw_calendar(birthdays, time_events, day_events, config_dict["language"],
+            config_dict["weekday_format"], config_dict["draw_date"],
+            config_dict["colormode"], config_dict["draw_now"], position = [0.5,0], scale = [0.5,0.5])
+            Himage = draw_warnings(Himage, server_reached, client_established)
+            Himage.save("./canvas.bmp")
         else:
-            print("no need to redo anything...")
+            Himage, HRimage = draw_calendar(birthdays, time_events, day_events, config_dict["language"],
+            config_dict["weekday_format"], config_dict["draw_date"],
+            config_dict["colormode"], config_dict["draw_now"], position = [0.5,0], scale = [0.5,0.5])
+            Himage = draw_warnings(Himage, server_reached, client_established)
+            Himage.save("./canvas.bmp")
+            HRimage.save("./r_canvas.bmp")
+
+        if(config_dict["on_e_paper"]):
+            #load epd library
+            from waveshare_epd import epd7in5b_V2
+            #initialise epd for the e-ink display
+            epd = epd7in5b_V2.EPD()
+            epd.init()
+            epd.Clear()
+            if config_dict["colormode"]:
+                epd.display(epd.getbuffer(Himage), epd.getbuffer(HRimage))
+            else:
+                epd.display(epd.getbuffer(Himage))
+        #else:
+        #    print("no need to redo anything...")
         t4 = datetime.now()
         delta = t4-t2
         print('needed', delta)
@@ -294,23 +291,35 @@ def draw_text_90_into (text: str, into, at):
 
 #only for testing purposes
 
-def draw_calendar(birthdays, time_events, day_events, language, weekday_format, draw_date, has_color, draw_now):
+def draw_calendar(birthdays, time_events, day_events, language, weekday_format, draw_date, has_color, draw_now, **kwargs):
     #create image buffer
-    Himage = Image.new('1', (800,480), 255)  # 255: clear the frame
+    if "scale" in kwargs:
+        scale = kwargs.get("scale")
+        width = round(scale[0]*800)
+        height = round(scale[1]*480)
+    else:
+        width = 800
+        height = 480
+    if "position" in kwargs:
+        position = kwargs.get("position")
+        position_px = [round(position[0]*800),round(position[1]*480)]
+    else:
+        position_px = [0,0]
+    Himage = Image.new('1', (width,height), 255)  # 255: clear the frame
     draw = ImageDraw.Draw(Himage)
     if(has_color):
-        HRimage = Image.new('1', (800,480), 255)  # 255: clear the frame
+        HRimage = Image.new('1', (width,height), 255)  # 255: clear the frame
         draw_r = ImageDraw.Draw(HRimage)
 
     #define language, and if abbreviations for weekdays should be used
 
     #define grid coordinates
-    upper_border_grid = 0
-    lower_border_grid = 465
-    left_border_grid = 15
-    right_border_grid = 785
-    first_hour = 6
-    last_hour = 23
+    upper_border_grid = position_px[1]
+    lower_border_grid = position_px[1]+height-15
+    left_border_grid = position_px[0] + 15
+    right_border_grid = position_px[0] + width - 15
+    first_hour = kwargs.get("first_hour") if ("first_hour" in kwargs) else 6
+    last_hour = kwargs.get("last_hour") if ("last_hour" in kwargs) else 23
 
     #calculate some grid related stuff
     hours_in_day = last_hour-first_hour
